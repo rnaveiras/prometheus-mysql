@@ -1,0 +1,83 @@
+version: '3'
+
+volumes:
+  prometheus_data: {}
+  grafana_data: {}
+
+services:
+  prometheus:
+    image: quay.io/prometheus/prometheus:latest
+    container_name: prometheus
+    volumes:
+      - ./prometheus:/etc/prometheus
+      - prometheus_data:/prometheus
+    command:
+      - '-config.file=/etc/prometheus/prometheus.yml'
+      - '-storage.local.path=/prometheus'
+    ports:
+      - 9090:9090
+    links:
+      - mysqld-exporter
+      - node
+
+  # alertmanager:
+  #   image: quay.io/prometheus/alertmanager
+  #   container_name: alertmanager
+  #   volumes:
+  #     - ./alertmanager:/etc/alertmanager
+  #   command:
+  #     - '-config.file=/etc/alertmanager/alertmanager.yml'
+  #   ports:
+  #     - 9093:9093
+
+  grafana:
+    image: grafana/grafana:latest
+    container_name: grafana
+    environment:
+      - GF_SECURITY_ADMIN_PASSWORD=secret
+      - GF_ALERTING_EXECUTE_ALERTS=false
+    volumes:
+      - grafana_data:/var/lib/grafana
+    ports:
+      - 3000:3000
+    links:
+      - prometheus
+    depends_on:
+      - prometheus
+
+  mysqld:
+    image: mysql:5.6
+    container_name: mysqld
+    environment:
+      - MYSQL_ALLOW_EMPTY_PASSWORD=true
+    volumes:
+      - ./mysql:/etc/mysql/conf.d
+      - ~/var/mysql:/var/lib/mysql
+    ports:
+      - 3306:3306
+
+  mysqld-exporter:
+    image: quay.io/prometheus/mysqld-exporter
+    command:
+     - -collect.info_schema.tablestats
+    container_name: mysqld-exporter
+    environment:
+      - DATA_SOURCE_NAME=exporter:exporter@(mysqld:3306)/
+    ports:
+      - 9104:9104
+    links:
+      - mysqld
+    depends_on:
+      - mysqld
+
+  node:
+    image: quay.io/prometheus/node-exporter
+    container_name: node-exporter
+    ports:
+      - 9100:9100
+    volumes:
+      - "/:/rootfs"
+
+networks:
+  default:
+    driver: bridge
